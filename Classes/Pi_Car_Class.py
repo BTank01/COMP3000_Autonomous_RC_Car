@@ -2,6 +2,7 @@
 This contains functionality pertaining to the general operation of the car
 """
 from Pi_GPIO_Class import Pi_GPIO
+from CV_Camera_Distance import calibrate_camera, reconstruction, take_calibration_images
 
 
 class Pi_Car:
@@ -11,6 +12,10 @@ class Pi_Car:
         self.speed = 50
         self.RPi_GPIO.set_speed(self.speed)
         self.GPS_Coords = [0, 0, 0]
+
+    def calibrate_camera(self):
+        take_calibration_images(12, 5)
+        calibrate_camera()
 
     def exit(self):
         self.RPi_GPIO.reset_GPIO()
