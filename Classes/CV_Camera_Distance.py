@@ -11,6 +11,52 @@ image1 = "Test Images\Test_image_40cm.jpg"
 image2 = "Test Images\Test_image_40cm.jpg"
 
 
+# Test Function
+def floor_plan(*raw_images):
+    images = []
+    for image in raw_images:
+        images.append(cv.imread(image))
+    # Create Stitcher
+    stitcher = cv.Stitcher_create()
+
+    # Stitch images
+    status, image = stitcher.stitch(images)
+
+    if status == cv.Stitcher_OK:
+        # cv.imshow('Panorama', result)
+        # cv.waitKey(0)
+        cv.destroyAllWindows()
+    else:
+        print("Error during stitching")
+
+    """     cv.rectangle(image, (100, 50), (300, 200), color=(0, 255, 0), thickness=2)  # Example rectangle
+
+    # Example: Add text annotations
+    cv.putText(image, 'Kitchen', (120, 180), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv.LINE_AA)
+
+    # Display or save the result
+    cv.imshow('Floor Plan with Annotations', image)
+    cv.waitKey(0)
+    cv.destroyAllWindows() """
+
+    # Define the source points (coordinates of the original image)
+    src_points = np.float32([[0, 0], [image.shape[1], 0], [0, image.shape[0]], [image.shape[1], image.shape[0]]])
+
+    # Define the destination points (coordinates for the top-down view)
+    dst_points = np.float32([[0, 0], [image.shape[1], 0], [0, image.shape[0]*2], [image.shape[1], image.shape[0]*2]])
+
+    # Calculate the perspective transformation matrix
+    M = cv.getPerspectiveTransform(src_points, dst_points)
+
+    # Apply the perspective transformation to obtain the top-down view
+    top_down_view = cv.warpPerspective(image, M, (image.shape[1], image.shape[0]*2))
+
+    # Display or save the top-down view
+    cv.imshow('Top-Down View', top_down_view)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
 # Misc Functions
 def display_matching_features(scene1_img, scene2_img, scene1Keypoints, scene2Keypoints, matches):
     final_img = cv.drawMatches(scene1_img, scene1Keypoints, scene2_img, scene2Keypoints, matches[:20],None)
@@ -137,6 +183,9 @@ def calibrate_camera():
 
     print("\n Distortion coefficient:") 
     print(distortion)
+    with open("Calibration Images/camera_distortion.pickle", "wb") as f:
+        # Pickle the 'data' dictionary using the highest protocol available.
+        pickle.dump(distortion, f, pickle.HIGHEST_PROTOCOL)
 
     print("\n Rotation Vectors:")
     print(r_vecs)
@@ -149,6 +198,9 @@ def reconstruction(scene1, scene2, distance):
     with open("Calibration Images/camera_calibration.pickle", "rb") as pickle_file:
         camera_matrix = pickle.load(pickle_file)
     # print(camera_matrix)
+    with open("Calibration Images/camera_distortion.pickle", "rb") as pickle_file:
+        camera_distortion = pickle.load(pickle_file)
+    # print(camera_distortion)
         
     scene1_img = cv.imread(scene1)
     scene2_img = cv.imread(scene2)
@@ -194,7 +246,104 @@ def reconstruction(scene1, scene2, distance):
     Visualize_reconstruction(points_3D)
 
 
+def reconstruction_multi(*image_paths):
+    # Load all images into opencv
+    images = []
+    for image in image_paths:
+        images.append(cv.imread(image, cv.IMREAD_GRAYSCALE))
+
+    # Load calibration matrix pickle
+    with open("Calibration Images/camera_calibration.pickle", "rb") as pickle_file:
+        camera_matrix = pickle.load(pickle_file)
+    with open("Calibration Images/camera_distortion.pickle", "rb") as pickle_file:
+        camera_distortion = pickle.load(pickle_file)
+
+    # Initialize detector and matcher
+    orb = cv.ORB_create()
+    matcher = cv.BFMatcher()
+
+    # Hold keypoints and descriptors
+    keypoints_arr = []
+    descriptors_arr = []
+
+    for image in images:
+        keypoints, descriptors = orb.detectAndCompute(image, None)
+        keypoints_arr.append(keypoints)
+        descriptors_arr.append(descriptors)
+
+    matches_arr = []
+    for i in range(0, len(descriptors_arr)-1):
+        matches = matcher.match(descriptors_arr[i], descriptors_arr[i+1])
+        matches = sorted(matches, key=lambda x: x.distance)
+        matches_arr.append(matches)
+
+    # Triangulation
+    points_3d = []
+    points_2d = []
+    for i, matches in enumerate(matches_arr):
+        left_keypoints = keypoints_arr[i]
+        right_keypoints = keypoints_arr[i + 1]
+
+        Left_points = np.float32([left_keypoints[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+        right_points = np.float32([right_keypoints[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+        essential_matrix, mask = cv.findEssentialMat(right_points, Left_points, cameraMatrix=camera_matrix, method=cv.RANSAC, prob=0.95, threshold=1.0)
+        _, R, t, mask = cv.recoverPose(essential_matrix, right_points, Left_points)
+
+        # Projection Matricies
+        P1 = np.hstack((np.eye(3), np.zeros((3, 1))))
+        P2 = np.hstack((R, t))
+
+        P1 = camera_matrix @ P1
+        P2 = camera_matrix @ P2
+
+        # Triangulate 3D points
+        points_4d_homogeneous = cv.triangulatePoints(P1, P2, Left_points.reshape(-1, 2).T, right_points.reshape(-1, 2).T)
+        points_3d_homogeneous = points_4d_homogeneous / points_4d_homogeneous[3, :]
+        points_3d.append(points_3d_homogeneous[:3, :].T)
+        points_2d.append(right_points)
+
+    # Merge 3D points from all images
+    points_3d = np.vstack(points_3d)
+    points_2d = np.vstack(points_2d)
+
+    # Transform 3d points to birds eye view
+    image = images[1]
+    cv.imshow("", image)
+    average_height = np.median(points_3d[:, 1])
+    transformation_matrix = np.array([[1, 0, 0], [0, 0.01, 0], [0, -1/average_height, 0]])
+    
+    image_size = (image.shape[1], image.shape[0])
+    K = cv.getOptimalNewCameraMatrix(camera_matrix, camera_distortion, image_size, alpha=-1, newImgSize=image_size)
+    K = K[0]
+    _, R_inv = cv.invert(R)
+    _, K_inv = cv.invert(K)
+    homography = np.matmul(np.identity(3), np.matmul(K, np.matmul(R_inv, K_inv)))
+    homography[0][0] = homography[0][0] * 1
+    homography[0][1] = homography[0][1] * 1
+    homography[0][2] = homography[0][2] * 1
+
+    homography[1][0] = homography[1][0] * 1
+    homography[1][1] = homography[1][1] * 1
+    homography[1][2] = homography[1][2] - 10000
+
+    homography[2][0] = homography[2][0] * 1
+    homography[2][1] = homography[2][1] * 1
+    # Zoom
+    homography[2][2] = homography[2][2] * -0.0000001
+
+    
+    # print(transformation_matrix)
+    print(homography)
+    birdseye_view = cv.warpPerspective(image, homography, (image.shape[1], image.shape[0]), flags=cv.WARP_INVERSE_MAP)
+    cv.imshow('Birdseye View', birdseye_view)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
 # calibrate_camera()
 # For test object distance from object 2 = 150cm
 # take_calibration_images(3, 5)
-# reconstruction("Test Images/image1.jpg", "Test Images/image2.jpg", 37)
+# reconstruction("Test Images/image3.jpg", "Test Images/image4.jpg", 37)
+reconstruction_multi("Test Images/image3.jpg", "Test Images/image4.jpg")
+# floor_plan("Test Images/image3.jpg", "Test Images/image4.jpg")
