@@ -11,6 +11,60 @@ image1 = "Test Images\Test_image_40cm.jpg"
 image2 = "Test Images\Test_image_40cm.jpg"
 
 
+class VisualSLAMMap:
+    def __init__(self):
+        self.keyframes = []  # List to store keyframes
+        self.points3D = []   # List to store 3D points
+        self.connections = []  # List to store connections between frames
+
+    def add_keyframe(self, frame, pose):
+        # Add a keyframe to the map
+        self.keyframes.append({'frame': frame, 'pose': pose, 'points': []})
+
+    def add_3D_point(self, point):
+        # Add a 3D point to the map
+        self.points3D.append(point)
+
+    def associate_keyframe_points(self, keyframe_idx, points_indices):
+        # Associate 3D points with a specific keyframe
+        self.keyframes[keyframe_idx]['points'] = points_indices
+
+    def update_map(self, new_keyframe, new_3D_points, connections):
+        # Update the map with a new keyframe and 3D points
+        self.add_keyframe(new_keyframe['frame'], new_keyframe['pose'])
+        for point in new_3D_points:
+            self.add_3D_point(point)
+        self.associate_keyframe_points(len(self.keyframes) - 1, list(range(len(self.points3D) - len(new_3D_points), len(self.points3D))))
+
+        # Update connections between frames
+        self.connections.extend(connections)
+
+    def prune_map(self):
+        # Prune redundant or less informative points or keyframes
+        # This step is problem-specific and depends on the map representation and application requirements
+        pass
+
+    def visualize_map(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        # Plot camera poses
+        for keyframe in self.keyframes:
+            pose = keyframe['pose']
+            ax.scatter(pose[0, 3], pose[1, 3], pose[2, 3], c='r', marker='o')
+
+        # Plot 3D points
+        points3D = np.array(self.points3D)
+        ax.scatter(points3D[:, 0], points3D[:, 1], points3D[:, 2], c='b', marker='.')
+
+        ax.set_xlabel('X-axis')
+        ax.set_ylabel('Y-axis')
+        ax.set_zlabel('Z-axis')
+        ax.set_title('Visual SLAM Map')
+
+        plt.show()
+
+
 # Test Function
 def floor_plan(*raw_images):
     images = []
@@ -247,6 +301,9 @@ def reconstruction(scene1, scene2, distance):
 
 
 def reconstruction_multi(*image_paths):
+    # initialize map
+    vmap = VisualSLAMMap()
+
     # Load all images into opencv
     images = []
     for image in image_paths:
@@ -276,6 +333,7 @@ def reconstruction_multi(*image_paths):
         matches = matcher.match(descriptors_arr[i], descriptors_arr[i+1])
         matches = sorted(matches, key=lambda x: x.distance)
         matches_arr.append(matches)
+    best_matches = matches[:50]
 
     # Triangulation
     points_3d = []
@@ -284,8 +342,8 @@ def reconstruction_multi(*image_paths):
         left_keypoints = keypoints_arr[i]
         right_keypoints = keypoints_arr[i + 1]
 
-        Left_points = np.float32([left_keypoints[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-        right_points = np.float32([right_keypoints[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+        Left_points = np.float32([left_keypoints[m.queryIdx].pt for m in best_matches]).reshape(-1, 1, 2)
+        right_points = np.float32([right_keypoints[m.trainIdx].pt for m in best_matches]).reshape(-1, 1, 2)
 
         essential_matrix, mask = cv.findEssentialMat(right_points, Left_points, cameraMatrix=camera_matrix, method=cv.RANSAC, prob=0.95, threshold=1.0)
         _, R, t, mask = cv.recoverPose(essential_matrix, right_points, Left_points)
@@ -307,38 +365,9 @@ def reconstruction_multi(*image_paths):
     points_3d = np.vstack(points_3d)
     points_2d = np.vstack(points_2d)
 
-    # Transform 3d points to birds eye view
-    image = images[1]
-    cv.imshow("", image)
-    average_height = np.median(points_3d[:, 1])
-    transformation_matrix = np.array([[1, 0, 0], [0, 0.01, 0], [0, -1/average_height, 0]])
-    
-    image_size = (image.shape[1], image.shape[0])
-    K = cv.getOptimalNewCameraMatrix(camera_matrix, camera_distortion, image_size, alpha=-1, newImgSize=image_size)
-    K = K[0]
-    _, R_inv = cv.invert(R)
-    _, K_inv = cv.invert(K)
-    homography = np.matmul(np.identity(3), np.matmul(K, np.matmul(R_inv, K_inv)))
-    homography[0][0] = homography[0][0] * 1
-    homography[0][1] = homography[0][1] * 1
-    homography[0][2] = homography[0][2] * 1
-
-    homography[1][0] = homography[1][0] * 1
-    homography[1][1] = homography[1][1] * 1
-    homography[1][2] = homography[1][2] - 10000
-
-    homography[2][0] = homography[2][0] * 1
-    homography[2][1] = homography[2][1] * 1
-    # Zoom
-    homography[2][2] = homography[2][2] * -0.0000001
-
-    
-    # print(transformation_matrix)
-    print(homography)
-    birdseye_view = cv.warpPerspective(image, homography, (image.shape[1], image.shape[0]), flags=cv.WARP_INVERSE_MAP)
-    cv.imshow('Birdseye View', birdseye_view)
-    cv.waitKey(0)
-    cv.destroyAllWindows()
+    # Visualize_reconstruction(points_3d)
+    vmap.update_map({'frame': images[-1], 'pose': np.hstack((R, t))}, points_3d, [])
+    vmap.visualize_map()
 
 
 # calibrate_camera()
@@ -347,3 +376,37 @@ def reconstruction_multi(*image_paths):
 # reconstruction("Test Images/image3.jpg", "Test Images/image4.jpg", 37)
 reconstruction_multi("Test Images/image3.jpg", "Test Images/image4.jpg")
 # floor_plan("Test Images/image3.jpg", "Test Images/image4.jpg")
+
+    # Birds EYE View
+    # # Transform 3d points to birds eye view
+    # image = images[1]
+    # cv.imshow("", image)
+    # average_height = np.median(points_3d[:, 1])
+    # transformation_matrix = np.array([[1, 0, 0], [0, 0.01, 0], [0, -1/average_height, 0]])
+    
+    # image_size = (image.shape[1], image.shape[0])
+    # K = cv.getOptimalNewCameraMatrix(camera_matrix, camera_distortion, image_size, alpha=-1, newImgSize=image_size)
+    # K = K[0]
+    # _, R_inv = cv.invert(R)
+    # _, K_inv = cv.invert(K)
+    # homography = np.matmul(np.identity(3), np.matmul(K, np.matmul(R_inv, K_inv)))
+    # homography[0][0] = homography[0][0] * 1
+    # homography[0][1] = homography[0][1] * 1
+    # homography[0][2] = homography[0][2] * 1
+
+    # homography[1][0] = homography[1][0] * 1
+    # homography[1][1] = homography[1][1] * 1
+    # homography[1][2] = homography[1][2] - 10000
+
+    # homography[2][0] = homography[2][0] * 1
+    # homography[2][1] = homography[2][1] * 1
+    # # Zoom
+    # homography[2][2] = homography[2][2] * -0.0000001
+
+    
+    # # print(transformation_matrix)
+    # print(homography)
+    # birdseye_view = cv.warpPerspective(image, homography, (image.shape[1], image.shape[0]), flags=cv.WARP_INVERSE_MAP)
+    # cv.imshow('Birdseye View', birdseye_view)
+    # cv.waitKey(0)
+    # cv.destroyAllWindows()
