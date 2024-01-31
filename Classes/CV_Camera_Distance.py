@@ -13,9 +13,9 @@ image2 = "Test Images\Test_image_40cm.jpg"
 
 class VisualSLAMMap:
     def __init__(self):
-        self.keyframes = []  # List to store keyframes
-        self.points3D = []   # List to store 3D points
-        self.connections = []  # List to store connections between frames
+        self.keyframes = []
+        self.points3D = []
+        self.connections = []
 
     def add_keyframe(self, frame, pose):
         # Add a keyframe to the map
@@ -40,8 +40,6 @@ class VisualSLAMMap:
         self.connections.extend(connections)
 
     def prune_map(self):
-        # Prune redundant or less informative points or keyframes
-        # This step is problem-specific and depends on the map representation and application requirements
         pass
 
     def visualize_map(self):
