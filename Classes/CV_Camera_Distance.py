@@ -370,9 +370,9 @@ def reconstruction_multi(*image_paths):
 
 # calibrate_camera()
 # For test object distance from object 2 = 150cm
-# take_calibration_images(3, 5)
+# take_calibration_images(12, 3)
 # reconstruction("Test Images/image3.jpg", "Test Images/image4.jpg", 37)
-reconstruction_multi("Test Images/image3.jpg", "Test Images/image4.jpg")
+# reconstruction_multi("Test Images/image3.jpg", "Test Images/image4.jpg")
 # floor_plan("Test Images/image3.jpg", "Test Images/image4.jpg")
 
     # Birds EYE View
