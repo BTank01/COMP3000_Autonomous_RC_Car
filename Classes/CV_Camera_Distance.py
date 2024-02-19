@@ -5,6 +5,7 @@ import cv2 as cv
 import glob
 import pickle
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 execution_path = os.getcwd()
 image1 = "Test Images\Test_image_40cm.jpg"
@@ -149,6 +150,16 @@ def take_calibration_images(image_count, delay):
 
     video_stream.release()
     cv.destroyAllWindows()
+
+
+def take_mapping_image():
+    file_location = "Mapping Images"
+    video_stream = cv.VideoCapture(0)
+    success, frame = video_stream.read()
+    if not success:
+        print("Error taking image!")
+    else:
+        cv.imwrite(f"{file_location}/image_{datetime.now().time()}.jpg", frame)
 
 
 def calibrate_camera():
@@ -366,6 +377,7 @@ def reconstruction_multi(*image_paths):
     # Visualize_reconstruction(points_3d)
     vmap.update_map({'frame': images[-1], 'pose': np.hstack((R, t))}, points_3d, [])
     vmap.visualize_map()
+    
 
 
 # calibrate_camera()

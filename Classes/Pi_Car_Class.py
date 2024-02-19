@@ -2,20 +2,35 @@
 This contains functionality pertaining to the general operation of the car
 """
 from Pi_GPIO_Class import Pi_GPIO
-from CV_Camera_Distance import calibrate_camera, reconstruction, take_calibration_images
-
+from CV_Camera_Distance import calibrate_camera, reconstruction, reconstruction_multi, take_calibration_images, take_mapping_image
+import os
+import glob
 
 class Pi_Car:
     def __init__(self):
         self.RPi_GPIO = Pi_GPIO()
         self.RPi_GPIO.reset_GPIO()
-        self.speed = 50
+        self.speed = 100
         self.RPi_GPIO.set_speed(self.speed)
         self.GPS_Coords = [0, 0, 0]
+        self.map = None
+
+        # Initialize Mapping
+        if not os.path.exists("Calibration Images/camera_calibration.pickle"):
+            calibrate_camera()
+        else:
+            take_mapping_image()
+            self.forward()
+            take_mapping_image()
+            images = glob.glob("Mapping Images/*.jpg")
+            self.map = reconstruction_multi(images)
 
     def calibrate_camera(self):
         take_calibration_images(12, 5)
         calibrate_camera()
+
+    def plan_path():
+        pass
 
     def exit(self):
         self.RPi_GPIO.reset_GPIO()
