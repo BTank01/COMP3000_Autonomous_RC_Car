@@ -159,7 +159,9 @@ def take_mapping_image():
     if not success:
         print("Error taking image!")
     else:
+        # cv.imshow("map", frame)
         cv.imwrite(f"{file_location}/image_{datetime.now().time()}.jpg", frame)
+    video_stream.release()
 
 
 def calibrate_camera():
@@ -309,7 +311,7 @@ def reconstruction(scene1, scene2, distance):
     Visualize_reconstruction(points_3D)
 
 
-def reconstruction_multi(*image_paths):
+def reconstruction_multi(image_paths):
     # initialize map
     vmap = VisualSLAMMap()
 

@@ -6,8 +6,10 @@ from CV_Camera_Distance import calibrate_camera, reconstruction, reconstruction_
 import os
 import glob
 
+
 class Pi_Car:
     def __init__(self):
+        print("Init Car")
         self.RPi_GPIO = Pi_GPIO()
         self.RPi_GPIO.reset_GPIO()
         self.speed = 100
@@ -15,12 +17,15 @@ class Pi_Car:
         self.GPS_Coords = [0, 0, 0]
         self.map = None
 
+        print("Beginning Mapping")
         # Initialize Mapping
         if not os.path.exists("Calibration Images/camera_calibration.pickle"):
             calibrate_camera()
         else:
+            print("Creating initial map")
             take_mapping_image()
             self.forward()
+            self.RPi_GPIO.forward()
             take_mapping_image()
             images = glob.glob("Mapping Images/*.jpg")
             self.map = reconstruction_multi(images)
@@ -76,5 +81,5 @@ def car_test():
             car.exit()
 
 
-if __name__ == "main":
+if __name__ == "__main__":
     car = Pi_Car()

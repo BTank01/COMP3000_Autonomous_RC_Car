@@ -68,6 +68,20 @@ class Pi_GPIO:
         self.pwm_br.ChangeDutyCycle(speed)
 
     def forward(self):
+        GPIO.cleanup()
+        GPIO.setmode(GPIO.BOARD)
+        # Font Wheels
+        GPIO.setup(self.FMCB1_LWR, GPIO.OUT)
+        GPIO.setup(self.FMCB2_LWF, GPIO.OUT)
+        GPIO.setup(self.FMCB3_RWR, GPIO.OUT)
+        GPIO.setup(self.FMCB4_RWF, GPIO.OUT)
+
+        # Rear Wheels
+        GPIO.setup(self.RMCB1_LWR, GPIO.OUT)
+        GPIO.setup(self.RMCB2_LWF, GPIO.OUT)
+        GPIO.setup(self.RMCB3_RWR, GPIO.OUT)
+        GPIO.setup(self.RMCB4_RWF, GPIO.OUT)
+
         GPIO.output(self.FMCB2_LWF, GPIO.HIGH)
         GPIO.output(self.FMCB4_RWF, GPIO.HIGH)
         GPIO.output(self.RMCB2_LWF, GPIO.HIGH)

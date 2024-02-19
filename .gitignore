@@ -159,6 +159,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 Calibration Images/*.jpg
+Mapping Images/
 Test Images/*.jpg
 Docs/Diagrams/flows.json
 Docs/Diagrams/calib.io_checker_200x200_11x11_15.pdf
