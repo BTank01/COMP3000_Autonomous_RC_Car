@@ -6,6 +6,10 @@ import glob
 import pickle
 import matplotlib.pyplot as plt
 from datetime import datetime
+import open3d as o3d
+
+from Navigation import astar
+from Object_Detection import detect_objects
 
 execution_path = os.getcwd()
 image1 = "Test Images\Test_image_40cm.jpg"
@@ -279,7 +283,7 @@ def reconstruction(scene1, scene2, distance):
     matcher = cv.BFMatcher()
     matches = matcher.match(scene1Descriptors, scene2Descriptors)
 
-    # display_matching_features(scene1_img, scene2_img, scene1Keypoints, scene2Keypoints, matches)  # Display image with matching features
+    display_matching_features(scene1_img, scene2_img, scene1Keypoints, scene2Keypoints, matches)  # Display image with matching features
 
     # Find camera matrix
     left_points = []
@@ -377,48 +381,98 @@ def reconstruction_multi(image_paths):
     points_2d = np.vstack(points_2d)
 
     # Visualize_reconstruction(points_3d)
-    vmap.update_map({'frame': images[-1], 'pose': np.hstack((R, t))}, points_3d, [])
-    vmap.visualize_map()
-    
+    vmap.update_map({"frame": images[-1], "pose": np.hstack((R, t))}, points_3d, [])
+    # vmap.visualize_map()
+    pose = vmap.keyframes[-1]["pose"]
+    start_point = [pose[0, 3], pose[1, 3], pose[2, 3]]
+    points = vmap.points3D
+
+    return start_point, points
+
+
+def mapping(start_point, points, image_path):
+    visualizer = o3d.visualization.Visualizer()
+    visualizer.create_window()
+
+    while True:
+        detected_objects = detect_objects(image_path)
+        visualizer.clear_geometries()
+        point_cloud = o3d.geometry.PointCloud()
+        for point in points:
+            point_cloud.points.append(point)
+        # for obj in detected_objects:
+        #     visualizer.add_geometry(obj["box_points"])
+        visualizer.add_geometry(point_cloud)
+        visualizer.add_geometry(o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5, origin=start_point))
+        visualizer.poll_events()
+        visualizer.update_renderer()
+
+        # Condense point cloud into 2d map
+        grid_size_x = 10  # meters
+        grid_size_y = 10  # meters
+        grid_resolution = 0.1  # meters per grid cell
+        grid_shape = (int(grid_size_x / grid_resolution), int(grid_size_y / grid_resolution))
+        grid_map = np.zeros(grid_shape, dtype=np.uint8)
+
+        print(start_point)
+        for point in np.asarray(point_cloud.points):
+            # Convert 3D point to 2D grid coordinates
+            grid_x = int((point[0] + grid_size_x / 2) / grid_resolution)
+            grid_y = int((point[1] + grid_size_y / 2) / grid_resolution)
+
+            # Update corresponding cell in grid map
+            if 0 <= grid_x < grid_shape[0] and 0 <= grid_y < grid_shape[1]:
+                grid_map[grid_x, grid_y] = 1  # Mark cell as occupied
+
+        plt.imshow(grid_map.T, cmap='gray', origin='lower', extent=[0, grid_size_x, 0, grid_size_y])
+        plt.xlabel('X (m)')
+        plt.ylabel('Y (m)')
+        plt.title('2D Occupancy Grid Map')
+        plt.colorbar(label='Occupancy')
+        plt.show()
+
+        time.sleep(5)
+        break
+
+    visualizer.destroy_window()
+
+    start_point = (int((start_point[0] + grid_size_x / 2) / grid_resolution),
+                int((start_point[1] + grid_size_x / 2) / grid_resolution))
+    return start_point, grid_map
+
+
+def route_plan(start_point, goal_point, grid_map):
+    print("Start point", start_point)
+    # start_point = (1, 1)
+    goal_point = (18, 23)
+    path, movements = astar(grid_map, start_point, goal_point)
+    plt.imshow(grid_map, cmap='gray', origin='lower', extent=[0, grid_map.shape[1], 0, grid_map.shape[0]])
+    plt.plot(start_point[1], start_point[0], 'go', label='Goal')
+    plt.plot(goal_point[1], goal_point[0], 'ro', label='Start')
+    if path:
+        path_x, path_y = zip(*path)
+        plt.plot(path_y, path_x, 'r-', linewidth=2, label='Path')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('A* Pathfinding')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    print(path)
+    print(movements)
+
+    return movements
+
+
 
 
 # calibrate_camera()
 # For test object distance from object 2 = 150cm
 # take_calibration_images(12, 3)
 # reconstruction("Test Images/image3.jpg", "Test Images/image4.jpg", 37)
-# reconstruction_multi("Test Images/image3.jpg", "Test Images/image4.jpg")
-# floor_plan("Test Images/image3.jpg", "Test Images/image4.jpg")
-
-    # Birds EYE View
-    # # Transform 3d points to birds eye view
-    # image = images[1]
-    # cv.imshow("", image)
-    # average_height = np.median(points_3d[:, 1])
-    # transformation_matrix = np.array([[1, 0, 0], [0, 0.01, 0], [0, -1/average_height, 0]])
-    
-    # image_size = (image.shape[1], image.shape[0])
-    # K = cv.getOptimalNewCameraMatrix(camera_matrix, camera_distortion, image_size, alpha=-1, newImgSize=image_size)
-    # K = K[0]
-    # _, R_inv = cv.invert(R)
-    # _, K_inv = cv.invert(K)
-    # homography = np.matmul(np.identity(3), np.matmul(K, np.matmul(R_inv, K_inv)))
-    # homography[0][0] = homography[0][0] * 1
-    # homography[0][1] = homography[0][1] * 1
-    # homography[0][2] = homography[0][2] * 1
-
-    # homography[1][0] = homography[1][0] * 1
-    # homography[1][1] = homography[1][1] * 1
-    # homography[1][2] = homography[1][2] - 10000
-
-    # homography[2][0] = homography[2][0] * 1
-    # homography[2][1] = homography[2][1] * 1
-    # # Zoom
-    # homography[2][2] = homography[2][2] * -0.0000001
-
-    
-    # # print(transformation_matrix)
-    # print(homography)
-    # birdseye_view = cv.warpPerspective(image, homography, (image.shape[1], image.shape[0]), flags=cv.WARP_INVERSE_MAP)
-    # cv.imshow('Birdseye View', birdseye_view)
-    # cv.waitKey(0)
-    # cv.destroyAllWindows()
+# reconstruction_multi(["Test Images/image1.jpg", "Test Images/image2.jpg"])
+images = ["Test Images/image3.jpg", "Test Images/image4.jpg"]
+start_point, points = reconstruction_multi(images)
+start_point, grid_map = mapping(start_point, points, images[-1])
+movements = route_plan(start_point, (0, 0), grid_map)
